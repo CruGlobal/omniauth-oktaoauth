@@ -5,7 +5,7 @@ require 'omniauth-oauth2'
 module OmniAuth
   module Strategies
     class Oktaoauth < OmniAuth::Strategies::OAuth2
-
+      class InvalidNonce < StandardError; end
 
       DEFAULT_SCOPE = %[openid profile email].freeze
 
@@ -81,11 +81,9 @@ module OmniAuth
       end
 
       def callback_phase
-        return_value = super
-        unless validated_token(oauth2_access_token.params["id_token"])["nonce"] == session["omniauth.nonce"]
-          fail!(:invalid_nonce)
-        end
-        return_value
+        super
+      rescue InvalidNonce => e
+        fail!(:invalid_nonce, e)
       end
 
       def callback_url
@@ -107,6 +105,31 @@ module OmniAuth
                    verify_jti:        false,
                    leeway:            options[:jwt_leeway]
                    ).first
+      end
+
+      protected
+
+      # Must run inside OAuth2#callback_phase before it hands off to the app.
+      def build_access_token
+        token = super
+        verify_nonce!(token.params["id_token"])
+        token
+      end
+
+      private
+
+      def verify_nonce!(id_token)
+        expected = session.delete("omniauth.nonce").to_s
+        raise InvalidNonce, "no nonce stored in the session" if expected.empty?
+        raise InvalidNonce, "token response has no id_token" if id_token.to_s.empty?
+
+        claims = validated_token(id_token)
+        actual = claims["nonce"] if claims.is_a?(Hash)
+        return if actual.is_a?(String) && Rack::Utils.secure_compare(actual, expected)
+
+        raise InvalidNonce, "id_token nonce does not match"
+      rescue JWT::DecodeError => e
+        raise InvalidNonce, "id_token could not be decoded: #{e.message}"
       end
     end
   end
