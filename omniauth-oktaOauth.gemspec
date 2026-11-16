@@ -18,8 +18,7 @@ Gem::Specification.new do |s|
   s.add_dependency "omniauth", ">= 1.5"
   s.add_dependency "omniauth-oauth2", ">= 1.4.0", "< 2.0"
 
-  s.add_development_dependency "bundler", "~> 1.5"
   s.add_development_dependency "rake"
-  s.add_development_dependency "rspec", "~> 2.7"
-  s.add_development_dependency "rack-test"
+  s.add_development_dependency "rspec", "~> 3.13"
+  s.add_development_dependency "rack-test", "~> 2.2"
 end
