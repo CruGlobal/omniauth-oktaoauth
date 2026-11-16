@@ -123,7 +123,8 @@ module OmniAuth
         raise InvalidNonce, "no nonce stored in the session" if expected.empty?
         raise InvalidNonce, "token response has no id_token" if id_token.to_s.empty?
 
-        actual = validated_token(id_token)["nonce"]
+        claims = validated_token(id_token)
+        actual = claims["nonce"] if claims.is_a?(Hash)
         return if actual.is_a?(String) && Rack::Utils.secure_compare(actual, expected)
 
         raise InvalidNonce, "id_token nonce does not match"

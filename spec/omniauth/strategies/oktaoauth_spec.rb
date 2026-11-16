@@ -89,6 +89,33 @@ describe OmniAuth::Strategies::Oktaoauth do
     it { expect(subject.extra[:raw_info]).to eq({ :foo => 'bar' }) }
   end
 
+  describe '#authorize_params' do
+    let(:strategy_options) { super().merge(redirect_uri: 'https://app.example/auth/oktaoauth/callback') }
+    let(:session) { {} }
+
+    before { allow(subject).to receive(:session).and_return(session) }
+
+    it 'stores the nonce it sends' do
+      params = subject.authorize_params
+
+      expect(params[:nonce]).to be_a(String)
+      expect(session['omniauth.nonce']).to eq(params[:nonce])
+    end
+
+    context 'when pkce is on' do
+      let(:strategy_options) { super().merge(pkce: true) }
+
+      it 'sends a code challenge along with the nonce' do
+        params = subject.authorize_params
+
+        expect(params[:code_challenge]).to be_a(String)
+        expect(params[:code_challenge_method]).to eq('S256')
+        expect(params[:nonce]).to eq(session['omniauth.nonce'])
+        expect(session['omniauth.pkce.verifier']).to be_a(String)
+      end
+    end
+  end
+
   describe '#callback_phase' do
     let(:app_calls) { [] }
     let(:app) { ->(env) { app_calls << env; [200, {}, ['signed in']] } }
@@ -208,6 +235,27 @@ describe OmniAuth::Strategies::Oktaoauth do
       let(:id_token) { 'not-a-jwt' }
 
       include_examples 'an invalid nonce'
+    end
+
+    context 'when the id_token payload is not a JSON object' do
+      let(:id_token) { JWT.encode([1], nil, 'none') }
+
+      include_examples 'an invalid nonce'
+    end
+
+    context 'when pkce is on' do
+      let(:strategy_options) { super().merge(pkce: true) }
+      let(:session) { { 'omniauth.state' => state, 'omniauth.nonce' => nonce, 'omniauth.pkce.verifier' => 'the-verifier' } }
+
+      it 'sends the stored code verifier and runs the app callback' do
+        status, = run_callback
+
+        expect(status).to eq(200)
+        expect(failures).to be_empty
+        expect(app_calls.size).to eq(1)
+        expect(client.auth_code).to have_received(:get_token)
+          .with('auth-code', hash_including(code_verifier: 'the-verifier'), anything)
+      end
     end
 
     context 'when the state does not match' do
